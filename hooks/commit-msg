@@ -1,0 +1,13 @@
+#! /bin/sh
+#
+# Automatically add the branch name in the commit
+# except if the comment begins by ":: "
+
+BRANCH=$(git branch --show-current)
+MSG=$(grep -v '^#' "$1")
+if  [[ $MSG == "$BRANCH: "* ]] || [[ $MSG == ":: "* ]]
+then
+echo "$MSG" | grep -v "^#" | sed 's/^:: //' > "$1"
+else
+echo "$BRANCH"': '"$MSG" > "$1"
+fi
