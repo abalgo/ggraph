@@ -295,7 +295,7 @@ foreach my $h (keys(%brTags)) {
 
 # Now parsing the git log output
 # to establish the branchname
-print STDERR "git log $flAll  --date-order --color @ARGV --pretty=format:\"%Xb: %P: %H: %s ::: $format\"  $file\n" if 1 || $flDebug;
+print STDERR "git log $flAll  --date-order --color @ARGV --pretty=format:\"%Xb: %P: %H: %s ::: $format\"  $file\n" if $flDebug;
 my @logs = `git log $flAll  --date-order --color @ARGV --pretty=format:"%Xb: %P: %H: %s ::: $format"  $file`;
 @logs =grep(s/[\r\n]*//g, @logs);
 
@@ -335,14 +335,14 @@ showall("after direct pass");
 # on the standard Merge comment
 if (!$flIgnoreMergeComments) {
     foreach my $h (@hashes) {
-        if ($commit{$h}{'subject'} =~ /Merge branch '([^']+)'( into (.+))*/i ) {
+        if ($commit{$h}{'subject'} =~ /Merge branch '([^']+)'.*?( into (\S+).*)*$/i ) {
               if ($brid{$1}) {
                  my $hp=substr($commit{$h}{'parent'},-40);
                  $commit{$hp}{'branch'}=$1 unless $commit{$hp}{'branch'} ne "";		
                  $commit{$h}{'branch'} = $3 if $2 && $brid{$3} ne "" && (!$commit{$h}{'branch'}) ;
               }
         }
-        elsif ($commit{$h}{'subject'} =~ /Merge branch *(\S+) *( into (.+))*/i ) {
+        elsif ($commit{$h}{'subject'} =~ /Merge branch *(\S+).*?( into (\S+).*)*$/i ) {
               if ($brid{$1}) {
                      my $hp=substr($commit{$h}{'parent'},-40);
                      $commit{$hp}{'branch'}=$1 unless $commit{$hp}{'branch'} ne "";		
