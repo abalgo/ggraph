@@ -38,18 +38,25 @@ hooksPath = /local/githooks
           to precede each commit comment with the name of the branch followed by ":". For example:
           git commit -m "MyBranchName: my comment of commit"
           It is possible to do this automatically using hooks.
-
           This script supports this "add-on" and can, in this case, be more
           reliable, even when fast-forward was used.
 
+          Another way to help the script is to add tags on commits for
+          which branch in unknown. The tag must have the following format:
+          @BranchName or @BranchName@xxx or @BranchName--xxx or @BranchName__xxx or @BranchName##xxx
+          where xxx is whatever you want
+          the branchname is case sensitive
+ 
           In the output representation:
              @ means the first commit of a branch
              O means a commit in branch
              V means the latest local commit of branch
              The characters "-" "+" "|" ">" "<" draw simply arrows.
-
+ 
              <= Branchname means the start commit of a branch
              => Branchname means the end commit of a branch
+
+
 
      output example with option -r -e:
 
@@ -69,28 +76,36 @@ hooksPath = /local/githooks
 
 
 
-     Usage:     ggraph.pl [-h] [-e] [-r] [-I] [-a] [-f format] -- [git log options]
+    Usage:     ggraph.pl [-h] [-e] [-r] [-I] [-a] [-f format] -- [git log options]
 
-          -a   : --all commits
-          -e   : expand (add one line between each commit)
-          -r   : reverse order (latest commit at the end)
-          -n   : no color
-          -f   : git pretty format to use as output
-                 in format, you can use the non standard placeholders:
-                 %Xz for the branch shape
-                 %Xb for the branch
-                 %Xw for the branch optimum width
-                 %XG the full graph + header + branchname with optimum width"
-                 %XB for the branch anchors (<= for starting branch, => for ending branch)
-                 %Xs for the stripped subject (subject without banch name in header)
-                 %Xc "*", mark the current
-                 %C(branch) for the branch color
-                 default format is : "%XG: %C(reset)%h %C(branch)%Xs"
-          -I   : ignore additional branch information
+         --all            : include everything, stash and alone commit included
+         --expand, -e     : expand (add one line between each commit)
+         --delete, -d     : allow detection of deleted branches (represent a fictive branch)
+         --file  path     : for one file only
+         --format, -f "format"   : git pretty format to use as output
+                in format, you can use the non standard placeholders:
+                %Xz for the branch shape
+                %Xb for the branch
+                %Xw for the branch optimum width
+                %XG the full graph + header + branchname with optimum width"
+                %XB for the branch anchors (<= for starting branch, => for ending branch)
+                %Xs for the stripped subject (subject without banch name in header)
+                %Xc "*", mark the current
+                %C(branch) for the branch color
+                default format is : "%XG: %C(reset)%h %C(branch)%Xs"
+         --ignore, -I     : ignore all additional branch information
+         --help, -h       : Display this help page
+         --ignore-comment : ignore information about branch in comment
+         --ignore-mergecomment : ignore information about branch in merge comment
+         --ignore-tags    : ignore tags additional information
+         --ignore-Xb      : ignore internal branch information
+         --no-color, -n   : no color
+         --no-remote      : don't display remote only branches 
+         --reverse,  -r   : reverse order (latest commit at the end)
+         --this           : consider only this branch
 
-
-     Examples :
-          ggraph.pl -a -f "%C(blue)%XB %Xb%C(reset) - %Xs (%d)"
-          ggraph.pl -a -f "%XG: %C(reset)%h %C(branch)%Xs %C(reset) (%cn: %ar)"
-          ggraph.pl  -e -a -f "%h %XG: %Xs%C(reset) (%<(5,trunc)%cn : %ad)" -- --date=short
-          ggraph.pl  -e -a -f "%h %C(branch)%Xw%Xz%C(branch)%XB %Xs%C(reset) (%<(5,trunc)%cn : %ad)" -- --date=short
+    Examples :
+         ggraph.pl -f "%C(blue)%XB %Xb%C(reset) - %Xs (%d)"
+         ggraph.pl -f "%XG: %C(reset)%h %C(branch)%Xs %C(reset) (%cn: %ar)"
+         ggraph.pl -ef "%h %XG: %Xs%C(reset) (%<(5,trunc)%cn : %ad)" -- --date=short
+         ggraph.pl -ef "%h %C(branch)%Xw%Xz%C(branch)%XB %Xs%C(reset) (%<(5,trunc)%cn : %ad)" -- --date=short
