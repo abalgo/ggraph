@@ -57,12 +57,12 @@ print <<EOF ;
 #
 #           Another way to help the script is to add tags on commits for
 #           which branch in unknown. The tag must have the following format:
-#           @BranchName or @BranchName@xxx or @BranchName--xxx or @BranchName__xxx or @BranchName##xxx
+#           \@BranchName or \@BranchName\@xxx or \@BranchName--xxx or \@BranchName__xxx or \@BranchName##xxx
 #           where xxx is whatever you want
 #           the branchname is case sensitive
 #
 #           In the output representation:
-#              @ means the first commit of a branch
+#              \@ means the first commit of a branch
 #              O means a commit in branch
 #              V means the latest local commit of branch
 #              The characters "-" "+" "|" ">" "<" draw simply arrows.
@@ -90,9 +90,10 @@ print <<EOF ;
 #
 #      Usage:     ggraph.pl [-h] [-e] [-r] [-I] [-a] [-f format] -- [git log options]
 #
-#           --expand,   -e  : expand (add one line between each commit)
-#           --reverse,  -r  : reverse order (latest commit at the end)
-#           --no-color, -n  : no color
+#           --all            : include everything, stash and alone commit included
+#           --expand, -e     : expand (add one line between each commit)
+#           --delete, -d     : allow detection of deleted branches (represent a fictive branch)
+#           --file  path     : for one file only
 #           --format, -f "format"   : git pretty format to use as output
 #                  in format, you can use the non standard placeholders:
 #                  %Xz for the branch shape
@@ -104,14 +105,15 @@ print <<EOF ;
 #                  %Xc "*", mark the current
 #                  %C(branch) for the branch color
 #                  default format is : "%XG: %C(reset)%h %C(branch)%Xs"
-#           --file  path     : for one file only
-#           --ignore-tags    : ignore tags additional information
+#           --ignore, -I     : ignore all additional branch information
+#           --help, -h       : Display this help page
 #           --ignore-comment : ignore information about branch in comment
 #           --ignore-mergecomment : ignore information about branch in merge comment
+#           --ignore-tags    : ignore tags additional information
 #           --ignore-Xb      : ignore internal branch information
-#           --ignore, -I     : ignore all additional branch information
-#           --all            : include everything, stash and alone commit included
+#           --no-color, -n   : no color
 #           --no-remote      : don't display remote only branches 
+#           --reverse,  -r   : reverse order (latest commit at the end)
 #           --this           : consider only this branch
 #
 #      Examples :
@@ -128,6 +130,7 @@ exit;
 use strict;
 
 my $flExp=0;
+my $flDelete;
 my $flRev=0;
 my $flIgnore=0;
 my $flIgnoreTags=0;
@@ -155,12 +158,13 @@ my @clst=  (
    "\e[1;37m");
 Getopt::Long::Configure ("gnu_getopt");
 GetOptions("all|a",\$flAll,
+           "delete|d",\$flDelete,
            "expand|e", \$flExp,
            "reverse|r", \$flRev,
            "no-color|n", \$flNocolor,
            "ignore|I", \$flIgnore,
            "format|f=s", \$format,
-           "debug|d",\$flDebug,
+           "debug|dd",\$flDebug,
            "no-remote",\$flNoRemotes,
            "no-branches",\$flNoBranches,
            "ignore-tags",\$flIgnoreTags,
@@ -229,7 +233,7 @@ my %nidbr={};
 
 my %commit={};
 my $maxlen=0;
-
+my %brDeleted={};
 my %strcol;
 my %strinterlinecol={};
 my $hhead;
@@ -288,6 +292,10 @@ foreach my $h (keys(%brTags)) {
     my $bra=$brTags{$h};
     print STDERR "DBG3: $bra - $h\n" if $flDebug;
     print STDERR "DBG4: brid $brid{$bra} \n" if $flDebug;
+    if (!$brid{$bra} && $flDelete) {
+       $brDeleted{$bra}=1;
+       $brid{$bra}=$h;
+    }
     next unless $brid{$bra}; # skip when branchname is unknown
     $commit{$h}{'branch'}=$bra;
     print STDERR "DBG: branch set $bra  => $h\n" if $flDebug;
@@ -319,11 +327,21 @@ foreach my $l (@logs) {
 
    # when hook is used to add in branchname: in header of the subject
    # we can recover it easily but it must match with an existing branchname
-   # So, is must be reset when it does not match with a branchname
-   $cb= "" unless $brid{$cb};
+   # So, is must be reset when it does not match with a branchname or create a
+   # delete one if flDelete is activated
+   $cb = $Xb if $Xb;
+   if (!$brid{$cb}) {
+       if ($flDelete) {
+           $brDeleted{$cb}=1;
+           $brid{$cb}=$h;
+       }
+       else {
+           $cb="";
+       }
+   }
 
    # Assignment of a branch when possible
-   $commit{$h}{'branch'} = $commit{$h}{'branch'}||$Xb||$cb;
+   $commit{$h}{'branch'} = $commit{$h}{'branch'}||$cb;
    $commit{$h}{'parent'} = $p;
    $commit{$h}{'subject'} = $txt;
    $commit{$h}{'output'} = $output;
@@ -335,20 +353,22 @@ showall("after direct pass");
 # on the standard Merge comment
 if (!$flIgnoreMergeComments) {
     foreach my $h (@hashes) {
-        if ($commit{$h}{'subject'} =~ /Merge branch '([^']+)'.*?( into (\S+).*)*$/i ) {
-              if ($brid{$1}) {
+        if ($commit{$h}{'subject'} =~ /Merge branch *'*([^\s']+).*?( into (\S+).*)*$/i ) {
+              print STDERR "DBG Merge detected : $1 ::: $3\n" if $flDebug;
+              if ($flDelete && !$brid{$3}) {
+                  $brid{$3}=$h;
+                  $brDeleted{$3}=1;
+              }
+              if ($brid{$1} || $flDelete) {
                  my $hp=substr($commit{$h}{'parent'},-40);
+                 if (!$brid{$1}) {
+                     $brid{$1}=$hp;
+                     $brDeleted{$1}=1;
+                 }
                  $commit{$hp}{'branch'}=$1 unless $commit{$hp}{'branch'} ne "";		
                  $commit{$h}{'branch'} = $3 if $2 && $brid{$3} ne "" && (!$commit{$h}{'branch'}) ;
               }
-        }
-        elsif ($commit{$h}{'subject'} =~ /Merge branch *(\S+).*?( into (\S+).*)*$/i ) {
-              if ($brid{$1}) {
-                     my $hp=substr($commit{$h}{'parent'},-40);
-                     $commit{$hp}{'branch'}=$1 unless $commit{$hp}{'branch'} ne "";		
-                     $commit{$h}{'branch'} = $3 if $2 && $brid{$3} ne "" && (!$commit{$h}{'branch'}) ;
-              }
-        }
+         }
     }
 }
 
@@ -462,11 +482,18 @@ my %branchcol;
 
 $commit{$hashes[0]}="master" unless $commit{$hashes[0]};
 foreach my $h (@hashes) {
+   if ($flDelete  && $brDeleted{$commit{$h}{'branch'}}) {
+       $commit{$h}{'branch'} = "~".$commit{$h}{'branch'};
+       $brid{$commit{$h}{'branch'}}=$h;
+       $maxlen = length($commit{$h}{'branch'}) if length($commit{$h}{'branch'})>$maxlen;
+   }
    if ($commit{$h}{'branch'} eq "") {
 	     $commit{$h}{'branch'}=$commit{substr($commit{$h}{'parent'},0,40)}{'branch'};
    }
 }
-
+foreach my $bra (keys(%lastreftobranch)) {
+   $lastreftobranch{"~$bra"} = $lastreftobranch{$bra} if $brDeleted{$bra};
+}
 # graph string construction
 # for each commit, parsing is done to
 # determine relationship with
