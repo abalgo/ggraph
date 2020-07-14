@@ -86,7 +86,15 @@ print <<EOF ;
 #                               |
 #                     ff373dd   V         => utils   : change the default output (Arn.. : 2020-03-04)
 #
+#      In some situations, ggraph is unable to detect correctly the branch, in these case, 
+#      some sumptions are done and branchname will be prefixed by ??? to notify the user 
+#      about the uncertaintly
 #
+#      In other situations due to manipulations of commits or branches, some commits are issued from
+#      2 commits of the same branch. It is, of course, impossible to represent this respecting the
+#      linear representation of branches. The choice that was done is to notify the user that the 
+#      commits and its parents are not correctly linked on the graph by adding the postfix !!!
+#      to the name of the banch.
 #
 #      Usage:     ggraph.pl [-h] [-e] [-r] [-I] [-a] [-f format] -- [git log options]
 #
@@ -251,6 +259,8 @@ while(<F>) {
    # the branchname is case sensitive
    # the syntax of the tag must be @BranchName or @BranchName@xxx or @BranchName--xxx or @BranchName__xxx or @BranchName##xxx
    # where xxx is whatever
+   # it does not indicate if a branch is local or remote
+   # we differentiate local and remote only when both are defined in the refs
    if (!$flIgnoreTags && m=(.+) refs/tags/\@(.+?)((--|__|\@|\#\#).*)?$=) {
       $brTags{$1}=$2;
       print STDERR "DBG: tag detected $1 $2\n" if $flDebug;
@@ -303,7 +313,7 @@ foreach my $h (keys(%brTags)) {
 
 # Now parsing the git log output
 # to establish the branchname
-print STDERR "git log $flAll  --date-order --color @ARGV --pretty=format:\"%Xb: %P: %H: %s ::: $format\"  $file\n" if $flDebug;
+print STDERR "git log $flAll   --date-order --topo-order --color @ARGV --pretty=format:\"%Xb: %P: %H: %s ::: $format\"  $file\n" if $flDebug;
 my @logs = `git log $flAll  --date-order --color @ARGV --pretty=format:"%Xb: %P: %H: %s ::: $format"  $file`;
 @logs =grep(s/[\r\n]*//g, @logs);
 
@@ -439,24 +449,92 @@ my %colbusy={};
 # must be after others
 my %hidx={};
 my $cidx=@hashes;
+my %placedhashes;
+my @newhashes=();
+sub isParentPlaced($) {
+   my ($h) = @_;
+   my @Parents = split(/ /, $commit{$h}{'parent'});
+   foreach my $c (@Parents) {
+      return(0) unless $placedhashes{$c};
+   }
+   return(1);
+}
+
+sub isBrotherPlaced($) {
+   my ($h) = @_;
+   my @Parents = split(/ /, $commit{$h}{'parent'});
+   my $children = "";
+   for my $p (@Parents) {
+       if ($commit{$p}{'branch'} eq $commit{$h}{'branch'}) {
+           $children .= $commit{$p}{'child'};
+       }
+   }
+   my @children = split(/ /, $children);
+   foreach my $c (@children) {
+       return(0) if !$placedhashes{$c} && ($c ne $h);
+   }
+   return(1);
+}  
+
+sub placeHash($) {
+   my ($h) = @_;
+   if (!$placedhashes{$h}) {
+       $placedhashes{$h}=1;
+       push(@newhashes,$h);
+       prthash( "DBG: placing $h \n") if $flDebug;
+   }
+}
+sub prthash($) {
+   my ($p)=@_;
+   $p =~ s/ (\S{4})\S{36}\b/ $1/g;
+   print STDERR $p;
+}
+
 foreach my $h (reverse @hashes) {
     $hidx{$h}=--$cidx;
-    if (length($commit{$h}{'child'})>41) {
-        my @children = split(/ /, $commit{$h}{'child'});
-        my $maxidxofchildren=0;
-        my $idxofchildsamebranch=0;
-        print STDERR "DBG: Reorder check\n" if $flDebug;
-        foreach my $c (@children) {
-           $idxofchildsamebranch = $hidx{$c} if $commit{$h}{'branch'} eq $commit{$c}{'branch'};
-           $maxidxofchildren = $hidx{$c} if $hidx{$c} > $maxidxofchildren;
-        }
-        print STDERR "DBG info: $idxofchildsamebranch  vs $maxidxofchildren\n" if $flDebug;
-        if ($idxofchildsamebranch && ($idxofchildsamebranch != $maxidxofchildren)) {
-            print STDERR "DBG: Reorder\n" if $flDebug;
-            ($hashes[$idxofchildsamebranch], $hashes[$maxidxofchildren]) = ($hashes[$maxidxofchildren],$hashes[$idxofchildsamebranch]);
-        }
-    }
 }
+
+# can be placed only when 
+# - all parents are placed
+# - all children of same branch parents are placed
+
+# - Each time there is one unplaced, loop start from first unplaced and place ony one and recheck
+
+placeHash($hashes[0]);
+my $firstunplaced=1;
+my $nbunplaced=@hashes-1;
+my $exception=0;
+while($nbunplaced!=0) {
+   my $flUnplaced=0;
+   print STDERR "#Loop $firstunplaced $hashes[$firstunplaced]\n" if $flDebug;
+   my $ii;
+   for($ii=$firstunplaced; $ii<@hashes; $ii++) {
+      next if $placedhashes{$hashes[$ii]};
+      prthash("DBG: trying $hashes[$ii] $nbunplaced ".  isParentPlaced($hashes[$ii]) .  isBrotherPlaced($hashes[$ii]) . "\n") if $flDebug; 
+      
+      if (isParentPlaced($hashes[$ii]) && ($exception || isBrotherPlaced($hashes[$ii]) )) {
+          placeHash($hashes[$ii]);
+          $undefh{$hashes[$ii]}=2 if $exception;
+          $nbunplaced--;   
+          last if $flUnplaced;
+          $exception=0;
+      }
+      else {
+          $firstunplaced=$ii unless $flUnplaced;
+          $flUnplaced=1;
+      }
+   }
+   if ($ii==@hashes && $flUnplaced) {
+       # in this condition, it means there is an impossibility
+       # So, the first unplaced is placed
+       print STDERR "DBG: mpossibility detected\n" if $flDebug ;
+       $exception=1;
+   }
+}
+
+ for(my $i=0; $i<@hashes; $i++) {
+     $hashes[$i]=$newhashes[$i];
+ }
 
 foreach my $h (reverse @hashes) {
   $lastreftobranch{$commit{$h}{'branch'}} = $h unless $lastreftobranch{$commit{$h}{'branch'}} ne "";
@@ -559,7 +637,7 @@ foreach my $h (@hashes) {
              $char = "@";
           }
            elsif($brid{$br} eq $h && $col==$i) {
-             $char = "V";
+             $char = "#";
           }
 		  elsif($lastreftobranch{$br} eq $h && $col==$i) {
               ## $char =  = "+";
@@ -601,12 +679,13 @@ foreach my $h ($flRev ? @hashes : reverse @hashes) {
    my $head= "  ";
    my $bcol=$clst[$branchcol{$commit{$h}{'branch'}} %7 ];
    my $br = $unknownprefix . $commit{$h}{'branch'};
-   $br = "???" . $commit{$h}{'branch'} if $undefh{$h};
+   $br = "???" . $commit{$h}{'branch'} if $undefh{$h}==1;
+   $br =  $commit{$h}{'branch'} . " !!!"  if $undefh{$h}==2;
    my $subject = $commit{$h}{'subject'};
    my $g = $strcol{$h};
    my $strbranch = sprintf("%-" . ($maxlen) . "s", $br );
-   $head = "=>" if $strcol{$h} =~ /V/;
-   $head = "<=" if $strcol{$h} =~ /\@/;
+   $head = "=>" if $strcol{$h} =~ /\@/;
+   $head = "<=" if $strcol{$h} =~ /\#/;
    my $o = $commit{$h}{'output'};
    my $cur = ($curref eq $h ? "*" : " ");
    $o =~ s/\%C\(branch\)/$bcol/g;
