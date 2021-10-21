@@ -123,6 +123,8 @@ print <<EOF ;
 #           --no-remote      : don't display remote only branches 
 #           --reverse,  -r   : reverse order (latest commit at the end)
 #           --this           : consider only this branch
+#           --light          : to use with a light background
+#           --testcolors     : show all color used
 #
 #      Examples :
 #           ggraph.pl -f "%C(blue)%XB %Xb%C(reset) - %Xs (%d)"
@@ -156,7 +158,12 @@ my $flIgnoreTags=0;
 my $flIgnoreComments=0;
 my $flIgnoreMergeComments=0;
 my $flIgnoreXb=0;
-my @clst=  (
+my $flLight=0;
+my $flTestcolors=0;
+my $i;
+my @clst;
+
+my @clstD=  (
    "\e[1;31m",
    "\e[1;32m",
    "\e[1;33m",
@@ -164,7 +171,41 @@ my @clst=  (
    "\e[1;35m",
    "\e[1;36m",
    "\e[1;37m");
-Getopt::Long::Configure ("gnu_getopt");
+my @clstL=  (
+   "\e[38;2;255;100;0m",
+   "\e[38;2;0;100;155m",
+   "\e[38;2;100;100;0m",
+   "\e[38;2;48;128;160m",
+   "\e[38;2;150;100;40m",
+   "\e[38;2;0;100;155m",
+   "\e[38;2;155;100;20m",
+   "\e[38;2;28;140;28m",
+   "\e[1;38m",
+   "\e[1;39m",
+   "\e[1;38m",
+   "\e[1;39m",
+   "\e[1;38m");
+
+my @clstL=  (
+   "\e[38;2;0;64;155m",
+   "\e[38;2;255;100;0m",
+   "\e[38;2;100;100;0m",
+   "\e[38;2;48;128;160m",
+   "\e[38;2;150;100;40m",
+   "\e[38;2;0;0;0m",
+   "\e[38;2;192;0;0m",
+   "\e[38;2;255;128;0m",
+   "\e[38;2;0;0;192m",
+   "\e[38;2;0;192;192m",
+   "\e[38;2;0;100;155m",
+   "\e[38;2;155;100;20m",
+   "\e[38;2;28;140;28m",
+   "\e[1;38m",
+   "\e[1;39m",
+   "\e[1;38m",
+   "\e[1;39m",
+   "\e[1;38m");
+
 GetOptions("all|a",\$flAll,
            "delete|d",\$flDelete,
            "expand|e", \$flExp,
@@ -180,6 +221,8 @@ GetOptions("all|a",\$flAll,
            "ignore-mergecomments",\$flIgnoreMergeComments,
            "this",\$flThis,
            "file=s",\$file,
+           "light|l",\$flLight,
+           "testcolors",\$flTestcolors,
            "help|h", \&usage) or usage;
 if ($flAll) {
     $flAll="--all ";
@@ -188,7 +231,21 @@ if ($flAll) {
 }
 
 $flAll="" if $flThis;
+if ($flLight) {
+    @clst = @clstL;
+} else {
+    @clst = @clstD;
+}
+
 @clst=  ("","","","","","","") if $flNocolor;
+if ($flTestcolors) {
+    for($i=0;$i<@clst;$i++) {
+        print @clst[$i]."This is written in color $i \n";
+    }
+    exit;
+}
+
+
 
 if ($flIgnore) {
    $flIgnoreComments=1;
